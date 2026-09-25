@@ -14,7 +14,11 @@ export async function launchPuppeteer(headless = true) {
   return { browser, page };
 }
 
-export async function pressKeyNTimes(page: Page, button: KeyInput, n: number) {
+export async function pressKeyNTimes(
+  page: Page,
+  button: KeyInput,
+  n: number = 1,
+) {
   for (let i = 0; i < n; i++) {
     await page.keyboard.press(button);
     await new Promise((r) => setTimeout(r, 10));

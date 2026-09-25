@@ -49,6 +49,7 @@ export async function writeSpreadsheetData(
   spreadsheetName: SpreadsheetName,
   range: string,
   values: string[][],
+  displayLog: boolean = true,
 ): Promise<void> {
   const sheets = google.sheets({ version: "v4", auth });
   const spreadsheetId = spreadsheets.get(spreadsheetName);
@@ -63,7 +64,10 @@ export async function writeSpreadsheetData(
       range,
     })
     .then(() => {
-      console.log(`${spreadsheetName} - ${range}: Range successfully cleared.`);
+      if (displayLog)
+        console.log(
+          `${spreadsheetName} - ${range}: Range successfully cleared.`,
+        );
     })
     .catch((err) => {
       console.error(err);
@@ -80,7 +84,10 @@ export async function writeSpreadsheetData(
       },
     })
     .then(() => {
-      console.log(`${spreadsheetName} - ${range}: Range successfully updated.`);
+      if (displayLog)
+        console.log(
+          `${spreadsheetName} - ${range}: Range successfully updated.`,
+        );
     })
     .catch((err) => {
       console.error(err);
