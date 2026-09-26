@@ -6,17 +6,12 @@ import { fileURLToPath } from "url";
 import { getStudentAppointments } from "./services/daysmart.js";
 import {
   discordClient,
+  sendAssessmentReport,
   sendEODStudentReport,
   sendReconciliationReport,
 } from "./services/discord.js";
 import { writeSpreadsheetData } from "./services/googleSheets.js";
-import { launchPuppeteer } from "./services/puppeteer.js";
-import {
-  getAssessmentInfo,
-  getEnrolledStudents,
-  handleRadiusOperations,
-  logIntoRadius,
-} from "./services/radius.js";
+import { handleRadiusOperations } from "./services/radius.js";
 import { isHolidayOrClosure } from "./utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -90,6 +85,7 @@ discordClient.once("clientReady", async () => {
       );
 
       await sendReconciliationReport(payments, totalExpected);
+      await sendAssessmentReport();
     },
     { timezone: "America/Chicago" },
   );
@@ -117,13 +113,7 @@ discordClient.once("clientReady", async () => {
   );
 
   // Testing only
-  (async () => {
-    // Insert code here.
-    const { page } = await launchPuppeteer();
-    await logIntoRadius(page);
-
-    const enrolledStudents = await getEnrolledStudents(page);
-    const assessmentInfo = await getAssessmentInfo(page, enrolledStudents);
-    console.log(assessmentInfo);
-  })();
+  // (async () => {
+  //   // Insert code here.
+  // })();
 });

@@ -1,6 +1,6 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { Client, GatewayIntentBits } from "discord.js";
-import { getStudentList } from "./googleSheets.js";
+import { getSpreadsheetData, getStudentList } from "./googleSheets.js";
 
 const discordChannels = new Map([
   ["admin-team", "1476779118006763703"],
@@ -266,6 +266,110 @@ export async function sendReconciliationReport(
   } else {
     console.log("All payments have been reconciled in Radius!");
   }
+}
+
+export async function sendAssessmentReport() {
+  const headers = await getSpreadsheetData(
+    "Instruction Scheduler",
+    "'Radius Students - HELPER'!A1:F1",
+  );
+
+  const assessmentInfo = await getSpreadsheetData(
+    "Instruction Scheduler",
+    "'Radius Students - HELPER'!A2:F",
+  );
+
+  const studentNameCol = headers.flat().indexOf("Student Name");
+  const radiusLinkCol = headers.flat().indexOf("Radius Link");
+  const lastDateCol = headers.flat().indexOf("Last Date");
+  const needsReassessmentCol = headers.flat().indexOf("Needs Reassessment");
+
+  if (
+    Math.min(
+      studentNameCol,
+      radiusLinkCol,
+      lastDateCol,
+      needsReassessmentCol,
+    ) === -1
+  ) {
+    return;
+  }
+
+  const reassessingStudents = assessmentInfo
+    .filter((row) => row[needsReassessmentCol] === "TRUE")
+    .map(
+      (row, i) =>
+        `${i + 1}. [${row[studentNameCol]}](${row[radiusLinkCol]}) - ${row[lastDateCol]}`,
+    );
+
+  if (reassessingStudents.length === 0) return;
+
+  function formatMessage(students: string[]) {
+    const messageBuckets: string[] = [];
+    let currentBucket = "";
+    const delimiter = "\n";
+    const maxCharLimit = 1700;
+
+    for (const student of students) {
+      // If a single month is somehow huge on its own, push it to its own bucket
+      if (student.length >= maxCharLimit) {
+        if (currentBucket) {
+          messageBuckets.push(currentBucket);
+          currentBucket = "";
+        }
+        messageBuckets.push(student);
+        continue;
+      }
+
+      // Determine what the bucket would look like if we add this month
+      const prospectiveText = currentBucket
+        ? currentBucket + delimiter + student
+        : student;
+
+      if (prospectiveText.length > maxCharLimit) {
+        // It exceeds the limit, so save the old bucket and start a new one with this month
+        messageBuckets.push(currentBucket);
+        currentBucket = student;
+      } else {
+        // It fits, so keep building the current bucket
+        currentBucket = prospectiveText;
+      }
+    }
+
+    // Push the final leftover bucket if it has data
+    if (currentBucket) {
+      messageBuckets.push(currentBucket);
+    }
+
+    return messageBuckets; // Returns an array of grouped data.
+  }
+
+  const leadTeamChannel = await fetchChannel("lead-team");
+
+  // Check if the channels exists AND are text-based channels
+  if (!leadTeamChannel) {
+    console.error("Lead team channel not found.");
+    return;
+  }
+  if (!leadTeamChannel.isTextBased() || !("send" in leadTeamChannel)) {
+    console.error("Lead team channel cannot send messages.");
+    return;
+  }
+
+  const today = new Date();
+  const timezone = "America/Chicago";
+
+  const formattedAssessmentInfo = formatMessage(reassessingStudents);
+
+  for (let i = 0; i < formattedAssessmentInfo.length; i++) {
+    const header = `# 📚 Assessment Report - ${formatInTimeZone(today, timezone, "eee, MMM d")} | ${reassessingStudents.length} ${reassessingStudents.length === 1 ? "student" : "students"}\n-# Below is an auto-generated assessments report for today (${formatInTimeZone(today, timezone, "MM/dd/yyyy")}).\n\n`;
+    const message = (
+      i === 0 ? header + formattedAssessmentInfo[i] : formattedAssessmentInfo[i]
+    ) as string;
+    await leadTeamChannel.send(message);
+  }
+
+  console.log(reassessingStudents);
 }
 
 export async function sendErrorNotification(message: string) {
