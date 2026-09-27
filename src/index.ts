@@ -106,10 +106,7 @@ discordClient.once("clientReady", async () => {
   );
 
   // Testing only
-  (async () => {
-    // Insert code here.
-    const { payments, totalExpected } = await handleRadiusOperations();
-    await sendReconciliationReport(payments, totalExpected);
-    await sendAssessmentReport();
-  })();
+  // (async () => {
+  //   // Insert code here.
+  // })();
 });
