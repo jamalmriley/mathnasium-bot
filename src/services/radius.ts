@@ -3,7 +3,7 @@ import { dirname, join } from "path";
 import type { Page } from "puppeteer";
 import { fileURLToPath } from "url";
 import { launchPuppeteer, pressKeyNTimes } from "./puppeteer.js";
-import { writeSpreadsheetData } from "./googleSheets.js";
+import { clearSpreadsheetData, writeSpreadsheetData } from "./googleSheets.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -36,6 +36,17 @@ export async function handleRadiusOperations() {
   await logIntoRadius(page);
   const checkedInStudents = await getCheckedInStudents(page);
   const enrolledStudents = await getEnrolledStudents(page);
+
+  await clearSpreadsheetData(
+    "Instruction Scheduler",
+    "Radius Students - HELPER!A2:D",
+  );
+  await writeSpreadsheetData(
+    "Instruction Scheduler",
+    "Radius Students - HELPER!A2:B",
+    enrolledStudents,
+  );
+
   const assessmentInfo = await getAssessmentInfo(page, enrolledStudents);
   const { payments, totalExpected } = await getPayments(page);
   await browser.close();

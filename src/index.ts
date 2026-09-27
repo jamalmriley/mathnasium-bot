@@ -76,14 +76,7 @@ discordClient.once("clientReady", async () => {
         dailyAppointments,
       );
 
-      const { enrolledStudents, payments, totalExpected } =
-        await handleRadiusOperations();
-      await writeSpreadsheetData(
-        "Instruction Scheduler",
-        "Radius Students - HELPER!A:A",
-        enrolledStudents,
-      );
-
+      const { payments, totalExpected } = await handleRadiusOperations();
       await sendReconciliationReport(payments, totalExpected);
       await sendAssessmentReport();
     },
@@ -113,7 +106,10 @@ discordClient.once("clientReady", async () => {
   );
 
   // Testing only
-  // (async () => {
-  //   // Insert code here.
-  // })();
+  (async () => {
+    // Insert code here.
+    const { payments, totalExpected } = await handleRadiusOperations();
+    await sendReconciliationReport(payments, totalExpected);
+    await sendAssessmentReport();
+  })();
 });

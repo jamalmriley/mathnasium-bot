@@ -95,6 +95,34 @@ export async function writeSpreadsheetData(
     });
 }
 
+export async function clearSpreadsheetData(
+  spreadsheetName: SpreadsheetName,
+  range: string,
+  displayLog: boolean = true,
+): Promise<void> {
+  const sheets = google.sheets({ version: "v4", auth });
+  const spreadsheetId = spreadsheets.get(spreadsheetName);
+  if (!spreadsheetId) {
+    throw new Error(`Spreadsheet with name "${spreadsheetName}" not found.`);
+  }
+
+  // Clear the existing contents
+  await sheets.spreadsheets.values
+    .clear({
+      spreadsheetId,
+      range,
+    })
+    .then(() => {
+      if (displayLog)
+        console.log(
+          `${spreadsheetName} - ${range}: Range successfully cleared.`,
+        );
+    })
+    .catch((err) => {
+      console.error(err);
+    });
+}
+
 export async function getStudentList(status: string): Promise<string> {
   const data = await getSpreadsheetData(
     "Instruction Scheduler",
