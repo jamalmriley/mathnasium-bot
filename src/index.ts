@@ -3,7 +3,10 @@ import { config } from "dotenv";
 import cron from "node-cron";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { getStudentAppointments } from "./services/daysmart.js";
+import {
+  createScheduleExceptions,
+  getStudentAppointments,
+} from "./services/daysmart.js";
 import {
   discordClient,
   sendAssessmentReport,
@@ -88,6 +91,8 @@ discordClient.once("clientReady", async () => {
         "DaySmart!B2:G",
         dailyAppointments,
       );
+
+      await createScheduleExceptions();
 
       const { payments, totalExpected } = await handleInstantRadiusOperations();
       await sendReconciliationReport(payments, totalExpected);

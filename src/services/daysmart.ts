@@ -1,8 +1,9 @@
 import axios from "axios";
-import { formatInTimeZone } from "date-fns-tz";
+import { format, formatInTimeZone } from "date-fns-tz";
 import { config } from "dotenv";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { getSpreadsheetData } from "./googleSheets.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -87,6 +88,16 @@ interface DaySmartAppointment {
   last_timestamp: string;
   action_link_url: string;
   time_zone: Object[];
+}
+
+interface ScheduleExceptionResponse {
+  resource: string;
+  action: string;
+  request: string;
+  result: "success" | "fail";
+  count: number;
+  errors: string[];
+  data: any;
 }
 
 export async function getStudentAppointments() {
@@ -224,4 +235,102 @@ export async function getStudentAppointments() {
     `${result.length - 1} ${result.length - 1 === 1 ? "appointment" : "appointments"} successfully formatted.`,
   );
   return result;
+}
+
+export async function createScheduleExceptions() {
+  const [c_id, employee_id] = [
+    parseInt(process.env.DAYSMART_C_ID!),
+    parseInt(process.env.DAYSMART_IN_CENTER_EMPLOYEE_ID!),
+  ];
+
+  function timeToMinutes(timeStr: string): number {
+    // Regex to extract hours, minutes, and the AM/PM modifier
+    const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+
+    if (!match) {
+      throw new Error("Invalid time format. Expected 'HH:MM AM/PM'");
+    }
+
+    const hoursStr = match[1] as string;
+    const minutesStr = match[2] as string;
+    const periodStr = match[3] as string;
+
+    let hours = parseInt(hoursStr);
+    const minutes = parseInt(minutesStr);
+    const period = periodStr.toUpperCase();
+
+    // Validate range bounds
+    if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) {
+      throw new Error("Invalid hours or minutes range");
+    }
+
+    // Convert 12-hour format to 24-hour underlying hours
+    if (period === "AM" && hours === 12) {
+      hours = 0; // 12:00 AM is midnight (0 hours)
+    } else if (period === "PM" && hours !== 12) {
+      hours += 12; // Add 12 hours for PM times, except 12:00 PM
+    }
+
+    return hours * 60 + minutes;
+  }
+
+  // Read Google spreadsheet
+  const scheduleExceptionsListData = await getSpreadsheetData(
+    "Instruction Scheduler",
+    "'DaySmart (Schedule Exceptions) - HELPER 2'!E2:H",
+  );
+
+  // Iterate through each row
+  for (const row of scheduleExceptionsListData) {
+    const [date, start_time, end_time, spots] = [
+      format(row[0] as string, "yyyyMMdd"),
+      timeToMinutes(row[1] as string),
+      timeToMinutes(row[2] as string),
+      parseInt(row[3] || ""),
+    ];
+
+    // Delete past schedule exception (if any)
+    const deleteReq = await daySmartClient.request({
+      method: "POST",
+      url: "/Staff/DeleteScheduleExceptions",
+      params: {
+        c_id,
+        date,
+        employee_id,
+        end_time,
+        response_type: "json",
+        start_time,
+      },
+    });
+    const deleteRes = (await deleteReq.data) as ScheduleExceptionResponse;
+    if (
+      deleteRes.errors[0] ===
+      "Specified schedule exception does not exist or has already been deleted."
+    )
+      console.log(`${row[0]} at ${row[1]}: No spots to delete`);
+    else if (deleteRes.result === "fail")
+      console.log("Error deleting schedule exception", deleteRes);
+    else console.log(`${row[0]} at ${row[1]}: Spots deleted`);
+
+    // Create schedule exception
+    const createReq = await daySmartClient.request({
+      method: "POST",
+      url: "/Staff/CreateScheduleExceptions",
+      params: {
+        c_id,
+        date,
+        employee_id,
+        end_time,
+        response_type: "json",
+        spots,
+        start_time,
+      },
+    });
+
+    // Log response
+    const createRes = (await createReq.data) as ScheduleExceptionResponse;
+    if (createRes.result === "fail")
+      console.log("Error creating schedule exception", createRes);
+    else console.log(`${row[0]} at ${row[1]}: Spots updated to ${spots}`);
+  }
 }
