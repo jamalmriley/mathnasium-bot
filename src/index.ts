@@ -11,7 +11,10 @@ import {
   sendReconciliationReport,
 } from "./services/discord.js";
 import { writeSpreadsheetData } from "./services/googleSheets.js";
-import { handleRadiusOperations } from "./services/radius.js";
+import {
+  handleDelayedRadiusOperations,
+  handleInstantRadiusOperations,
+} from "./services/radius.js";
 import { isHolidayOrClosure } from "./utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -30,6 +33,16 @@ discordClient.once("clientReady", async () => {
     console.log("Skipping daily report due to center closure.");
     return;
   }
+
+  // Sun-Thu at 3:00 AM
+  // Delayed Operations - Fetch assessment info
+  cron.schedule(
+    "0 3 * * 0-4",
+    async () => {
+      await handleDelayedRadiusOperations();
+    },
+    { timezone: "America/Chicago" },
+  );
 
   // Sun-Thu at 9:00 AM
   // BOD Operations - Fetch student appointments, enrolled students, and payment issues.
@@ -76,7 +89,7 @@ discordClient.once("clientReady", async () => {
         dailyAppointments,
       );
 
-      const { payments, totalExpected } = await handleRadiusOperations();
+      const { payments, totalExpected } = await handleInstantRadiusOperations();
       await sendReconciliationReport(payments, totalExpected);
       await sendAssessmentReport();
     },
@@ -88,7 +101,7 @@ discordClient.once("clientReady", async () => {
   cron.schedule(
     "45 19 * * 1-4",
     async () => {
-      const { checkedInStudents } = await handleRadiusOperations();
+      const { checkedInStudents } = await handleInstantRadiusOperations();
       await sendEODStudentReport(checkedInStudents);
     },
     { timezone: "America/Chicago" },
@@ -99,7 +112,7 @@ discordClient.once("clientReady", async () => {
   cron.schedule(
     "15 17 * * 0",
     async () => {
-      const { checkedInStudents } = await handleRadiusOperations();
+      const { checkedInStudents } = await handleInstantRadiusOperations();
       await sendEODStudentReport(checkedInStudents);
     },
     { timezone: "America/Chicago" },

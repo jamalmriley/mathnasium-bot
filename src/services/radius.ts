@@ -31,7 +31,7 @@ export async function logIntoRadius(page: Page) {
   await console.log(`Logged into Radius as ${username}`);
 }
 
-export async function handleRadiusOperations() {
+export async function handleInstantRadiusOperations() {
   const { browser, page } = await launchPuppeteer();
   await logIntoRadius(page);
   const checkedInStudents = await getCheckedInStudents(page);
@@ -47,17 +47,26 @@ export async function handleRadiusOperations() {
     enrolledStudents,
   );
 
-  const assessmentInfo = await getAssessmentInfo(page, enrolledStudents);
   const { payments, totalExpected } = await getPayments(page);
   await browser.close();
 
   return {
-    assessmentInfo,
     checkedInStudents,
     enrolledStudents,
     payments,
     totalExpected,
   };
+}
+
+export async function handleDelayedRadiusOperations() {
+  const { browser, page } = await launchPuppeteer();
+  await logIntoRadius(page);
+  const enrolledStudents = await getEnrolledStudents(page);
+  // const assessmentInfo = await getAssessmentInfo(page, enrolledStudents);
+  await getAssessmentInfo(page, enrolledStudents);
+  await browser.close();
+
+  // return { assessmentInfo, enrolledStudents };
 }
 
 export async function getCheckedInStudents(page: Page): Promise<string> {
