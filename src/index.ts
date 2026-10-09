@@ -32,16 +32,15 @@ discordClient.once("clientReady", async () => {
   }
   console.log(`Logged into Discord as ${discordClient.user.tag}`);
 
-  if (isHolidayOrClosure()) {
-    console.log("Skipping daily report due to center closure.");
-    return;
-  }
-
   // Sun-Thu at 3:00 AM
   // Delayed Operations - Fetch assessment info
   cron.schedule(
     "0 3 * * 0-4",
     async () => {
+      if (isHolidayOrClosure()) {
+        console.log("Skipping automation due to center closure.");
+        return;
+      }
       await handleDelayedRadiusOperations();
     },
     { timezone: "America/Chicago" },
@@ -52,6 +51,10 @@ discordClient.once("clientReady", async () => {
   cron.schedule(
     "0 9 * * 0-4",
     async () => {
+      if (isHolidayOrClosure()) {
+        console.log("Skipping automation due to center closure.");
+        return;
+      }
       const allAppointments = await getStudentAppointments();
       const dailyAppointments = allAppointments
         .filter(
@@ -106,6 +109,10 @@ discordClient.once("clientReady", async () => {
   cron.schedule(
     "45 19 * * 1-4",
     async () => {
+      if (isHolidayOrClosure()) {
+        console.log("Skipping automation due to center closure.");
+        return;
+      }
       const { checkedInStudents } = await handleInstantRadiusOperations();
       await sendEODStudentReport(checkedInStudents);
     },
@@ -117,6 +124,10 @@ discordClient.once("clientReady", async () => {
   cron.schedule(
     "15 17 * * 0",
     async () => {
+      if (isHolidayOrClosure()) {
+        console.log("Skipping automation due to center closure.");
+        return;
+      }
       const { checkedInStudents } = await handleInstantRadiusOperations();
       await sendEODStudentReport(checkedInStudents);
     },

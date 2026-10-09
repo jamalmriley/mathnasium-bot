@@ -1,10 +1,9 @@
-// closureDates.js or within the same file
 const HOLIDAYS_AND_CLOSURES = [
   "2026-01-01", // New Year's Day
   "2026-05-10", // Mother's Day
   "2026-05-25", // Memorial Day
-  // "2026-06-19", // Juneteenth
-  // "2026-07-04", // 4th of July
+  "2026-06-19", // Juneteenth
+  "2026-07-04", // 4th of July
   "2026-09-07", // Labor Day
   "2026-10-12", // Indigenous Peoples' Day
   "2026-11-26", // Thanksgiving
