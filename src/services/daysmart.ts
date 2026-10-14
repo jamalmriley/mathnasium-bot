@@ -96,7 +96,7 @@ interface ScheduleExceptionResponse {
   request: string;
   result: "success" | "fail";
   count: number;
-  errors: string[];
+  errors?: string[];
   data: any;
 }
 
@@ -275,62 +275,74 @@ export async function createScheduleExceptions() {
   }
 
   // Read Google spreadsheet
-  const scheduleExceptionsListData = await getSpreadsheetData(
-    "Instruction Scheduler",
-    "'DaySmart (Schedule Exceptions) - HELPER 2'!E2:H",
-  );
+  try {
+    const scheduleExceptionsListData = await getSpreadsheetData(
+      "Instruction Scheduler",
+      "'DaySmart (Schedule Exceptions) - HELPER 2'!E2:H",
+    );
 
-  // Iterate through each row
-  for (const row of scheduleExceptionsListData) {
-    const [date, start_time, end_time, spots] = [
-      format(row[0] as string, "yyyyMMdd"),
-      timeToMinutes(row[1] as string),
-      timeToMinutes(row[2] as string),
-      parseInt(row[3] || ""),
-    ];
+    await console.log("um", scheduleExceptionsListData);
 
-    // Delete past schedule exception (if any)
-    const deleteReq = await daySmartClient.request({
-      method: "POST",
-      url: "/Staff/DeleteScheduleExceptions",
-      params: {
-        c_id,
-        date,
-        employee_id,
-        end_time,
-        response_type: "json",
-        start_time,
-      },
-    });
-    const deleteRes = (await deleteReq.data) as ScheduleExceptionResponse;
-    if (
-      deleteRes.errors[0] ===
-      "Specified schedule exception does not exist or has already been deleted."
-    )
-      console.log(`${row[0]} at ${row[1]}: No spots to delete`);
-    else if (deleteRes.result === "fail")
-      console.log("Error deleting schedule exception", deleteRes);
-    else console.log(`${row[0]} at ${row[1]}: Spots deleted`);
+    if (scheduleExceptionsListData.length > 0) {
+      // Iterate through each row
+      for (const row of scheduleExceptionsListData) {
+        const [date, start_time, end_time, spots] = [
+          format(row[0] as string, "yyyyMMdd"),
+          timeToMinutes(row[1] as string),
+          timeToMinutes(row[2] as string),
+          parseInt(row[3] || ""),
+        ];
 
-    // Create schedule exception
-    const createReq = await daySmartClient.request({
-      method: "POST",
-      url: "/Staff/CreateScheduleExceptions",
-      params: {
-        c_id,
-        date,
-        employee_id,
-        end_time,
-        response_type: "json",
-        spots,
-        start_time,
-      },
-    });
+        // Delete past schedule exception (if any)
+        const deleteReq = await daySmartClient.request({
+          method: "POST",
+          url: "/Staff/DeleteScheduleExceptions",
+          params: {
+            c_id,
+            date,
+            employee_id,
+            end_time,
+            response_type: "json",
+            start_time,
+          },
+        });
+        const deleteRes = (await deleteReq.data) as ScheduleExceptionResponse;
+        // console.log(deleteRes);
+        if (deleteRes.errors) {
+          if (
+            deleteRes.errors[0] ===
+            "Specified schedule exception does not exist or has already been deleted."
+          )
+            console.log(`${row[0]} at ${row[1]}: No spots to delete`);
+          else if (deleteRes.result === "fail")
+            console.log("Error deleting schedule exception", deleteRes);
+        } else console.log(`${row[0]} at ${row[1]}: Spots deleted`);
 
-    // Log response
-    const createRes = (await createReq.data) as ScheduleExceptionResponse;
-    if (createRes.result === "fail")
-      console.log("Error creating schedule exception", createRes);
-    else console.log(`${row[0]} at ${row[1]}: Spots updated to ${spots}`);
+        // Create schedule exception
+        const createReq = await daySmartClient.request({
+          method: "POST",
+          url: "/Staff/CreateScheduleExceptions",
+          params: {
+            c_id,
+            date,
+            employee_id,
+            end_time,
+            response_type: "json",
+            spots,
+            start_time,
+          },
+        });
+
+        // Log response
+        const createRes = (await createReq.data) as ScheduleExceptionResponse;
+        if (createRes.result === "fail")
+          console.log("Error creating schedule exception", createRes);
+        else console.log(`${row[0]} at ${row[1]}: Spots updated to ${spots}`);
+      }
+    } else {
+      console.log("Success: No spots to update in DaySmart.");
+    }
+  } catch (err: any) {
+    console.log(`Error: ${err.message}`);
   }
 }
