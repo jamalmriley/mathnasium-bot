@@ -2,12 +2,18 @@ import { config } from "dotenv";
 import { dirname, join } from "path";
 import type { Page } from "puppeteer";
 import { fileURLToPath } from "url";
+import { writeSpreadsheetData } from "./googleSheets.js";
 import { launchPuppeteer, pressKeyNTimes } from "./puppeteer.js";
-import { clearSpreadsheetData, writeSpreadsheetData } from "./googleSheets.js";
+import { format } from "date-fns-tz";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 config({ path: join(__dirname, "../../.env.local") });
+
+interface WeekBounds {
+  sunday: Date;
+  saturday: Date;
+}
 
 export async function logIntoRadius(page: Page) {
   const [username, password] = [
@@ -65,6 +71,17 @@ export async function handleDelayedRadiusOperations() {
   await getAssessmentInfo(page, enrolledStudents);
   await browser.close();
 }
+
+export async function handleWeeklyRadiusOperations() {
+  const { browser, page } = await launchPuppeteer();
+  await logIntoRadius(page);
+  const birthdays = await getStudentBirthdays(page);
+
+  await browser.close();
+  return { birthdays };
+}
+
+// —————————————————————————————————————————————————— //
 
 export async function getCheckedInStudents(page: Page): Promise<string> {
   await console.log("Searching checked-in students...");
@@ -408,4 +425,77 @@ export async function getPayments(page: Page) {
     `${payments.length - 1} ${payments.length - 1 === 1 ? "payment" : "payments"} found.`,
   );
   return { payments, totalExpected };
+}
+
+export async function getStudentBirthdays(page: Page): Promise<string> {
+  function getCurrentWeekBounds(today: Date = new Date()): WeekBounds {
+    // Get the current day of the week (0 for Sunday, 6 for Saturday)
+    const currentDayIndex = today.getDay();
+
+    // Calculate Sunday by subtracting the current day index from today's date
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() - currentDayIndex);
+    sunday.setHours(0, 0, 0, 0);
+
+    // Calculate Saturday by adding the remaining days of the week
+    const saturday = new Date(sunday);
+    saturday.setDate(sunday.getDate() + 6);
+    saturday.setHours(23, 59, 59, 999);
+
+    return { sunday, saturday };
+  }
+  const today = new Date();
+
+  await console.log("Searching student birthdays...");
+  await page.goto("https://radius.mathnasium.com/BirthdayReport");
+  await pressKeyNTimes(page, "Tab", 9);
+  await page.keyboard.type("Accounts", { delay: 100 }); // Type "Accounts" instead of "Accounts Only" to avoid the space
+  await page.keyboard.press("Tab");
+  await page.keyboard.type("Enrolled", { delay: 100 });
+  await pressKeyNTimes(page, "Tab", 3);
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("tr.k-master-row");
+
+  const studentBirthdays = await page
+    .$$eval("tr.k-master-row", (rows) => {
+      return rows.map((row) => {
+        const cells = Array.from(row.cells);
+        return cells.map((cell) => cell.innerText);
+      });
+    })
+    .then((students) =>
+      students
+        .sort((a, b) => {
+          const birthdayA = new Date(a[2] || "");
+          birthdayA.setFullYear(today.getFullYear());
+
+          const birthdayB = new Date(b[2] || "");
+          birthdayB.setFullYear(today.getFullYear());
+
+          return birthdayA.getTime() - birthdayB.getTime();
+        })
+        .filter((row) => {
+          const birthday = new Date(row[2] || "");
+          birthday.setFullYear(today.getFullYear());
+          const { sunday, saturday } = getCurrentWeekBounds(today);
+          return birthday >= sunday && birthday <= saturday;
+        }) // Filter for only students with birthdays this week
+        .map((row, i) => {
+          const dob = new Date(row[2] || "");
+          const birthday = new Date(row[2] || "");
+          birthday.setFullYear(today.getFullYear());
+          const age = birthday.getFullYear() - dob.getFullYear();
+          return `${i + 1}. ${[row[0], row[1]].join(" ")} turns ${age} on ${format(birthday, "eee, MMM d")}!`.trim();
+        }),
+    );
+
+  const studentList =
+    studentBirthdays.length > 0
+      ? `**The following students have birthdays this week:**\n` +
+        studentBirthdays.join("\n") +
+        `\n\nIf you see these students, please wish them a birthday that's as sweet as π, even > than the last, and filled with ∞ possibilities!`
+      : "There are no upcoming student birthdays this week.";
+
+  console.log(studentList);
+  return studentList;
 }

@@ -10,6 +10,7 @@ import {
 import {
   discordClient,
   sendAssessmentReport,
+  sendBirthdayReport,
   sendEODStudentReport,
   sendReconciliationReport,
 } from "./services/discord.js";
@@ -17,6 +18,7 @@ import { writeSpreadsheetData } from "./services/googleSheets.js";
 import {
   handleDelayedRadiusOperations,
   handleInstantRadiusOperations,
+  handleWeeklyRadiusOperations,
 } from "./services/radius.js";
 import { isHolidayOrClosure } from "./utils.js";
 
@@ -33,7 +35,7 @@ discordClient.once("clientReady", async () => {
   console.log(`Logged into Discord as ${discordClient.user.tag}`);
 
   // Sun-Thu at 3:00 AM
-  // Delayed Operations - Fetch assessment info
+  // Delayed Operations - Get assessment info
   cron.schedule(
     "0 3 * * 0-4",
     async () => {
@@ -46,8 +48,23 @@ discordClient.once("clientReady", async () => {
     { timezone: "America/Chicago" },
   );
 
+  // Sun at 9:00 AM
+  // Weekly Operations - Get student birthday info
+  cron.schedule(
+    "0 9 * * 0",
+    async () => {
+      if (isHolidayOrClosure()) {
+        console.log("Skipping automation due to center closure.");
+        return;
+      }
+      const { birthdays } = await handleWeeklyRadiusOperations();
+      await sendBirthdayReport(birthdays);
+    },
+    { timezone: "America/Chicago" },
+  );
+
   // Sun-Thu at 9:00 AM
-  // BOD Operations - Fetch student appointments, enrolled students, and payment issues.
+  // BOD Operations - Get student appointments, enrolled students, and payment issues.
   cron.schedule(
     "0 9 * * 0-4",
     async () => {

@@ -7,6 +7,7 @@ const discordChannels = new Map([
   ["automated-reminders", "1489433511470436403"],
   ["lead-team", "1457443742842753148"],
   ["test-channel", "1481388054148284569"],
+  ["general-updates", "1457443333541597392"],
 ] as const);
 
 type DiscordChannelName = Parameters<typeof discordChannels.get>[0];
@@ -21,6 +22,29 @@ export const discordClient = new Client({
 
 async function fetchChannel(channelName: DiscordChannelName) {
   return await discordClient.channels.fetch(discordChannels.get(channelName)!);
+}
+
+export async function sendBirthdayReport(birthdays: string) {
+  console.log("Running birthday report...");
+  const channel = await fetchChannel("test-channel");
+
+  // Check if the channel exists AND is a text-based channel
+  if (!channel) {
+    console.error("Channel not found.");
+    return;
+  }
+  if (!channel.isTextBased() || !("send" in channel)) {
+    console.error("Channel cannot send messages.");
+    return;
+  }
+
+  const today = new Date();
+  const timezone = "America/Chicago";
+
+  await channel.send(
+    `# 🎂 Birthday Report - ${formatInTimeZone(today, timezone, "eee, MMM d")}\n-# Below is an auto-generated birthday report for the week of ${formatInTimeZone(today, timezone, "MM/dd/yyyy")}. [Click here](https://radius.mathnasium.com/BirthdayReport) to navigate to the Radius Student Birthday Report. For any questions or concerns, please reach out to the admin team.\n\n` +
+      birthdays,
+  );
 }
 
 export async function sendEODStudentReport(checkedInStudents: string) {
