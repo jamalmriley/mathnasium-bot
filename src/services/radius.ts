@@ -37,15 +37,15 @@ export async function handleInstantRadiusOperations() {
   const checkedInStudents = await getCheckedInStudents(page);
   const enrolledStudents = await getEnrolledStudents(page);
 
-  await clearSpreadsheetData(
-    "Instruction Scheduler",
-    "Radius Students - HELPER!A2:D",
-  );
-  await writeSpreadsheetData(
-    "Instruction Scheduler",
-    "Radius Students - HELPER!A2:B",
-    enrolledStudents,
-  );
+  // await clearSpreadsheetData(
+  //   "Instruction Scheduler",
+  //   "Radius Students - HELPER!A2:B",
+  // );
+  // await writeSpreadsheetData(
+  //   "Instruction Scheduler",
+  //   "Radius Students - HELPER!A2:B",
+  //   enrolledStudents,
+  // );
 
   const { payments, totalExpected } = await getPayments(page);
   await browser.close();
@@ -62,11 +62,8 @@ export async function handleDelayedRadiusOperations() {
   const { browser, page } = await launchPuppeteer();
   await logIntoRadius(page);
   const enrolledStudents = await getEnrolledStudents(page);
-  // const assessmentInfo = await getAssessmentInfo(page, enrolledStudents);
   await getAssessmentInfo(page, enrolledStudents);
   await browser.close();
-
-  // return { assessmentInfo, enrolledStudents };
 }
 
 export async function getCheckedInStudents(page: Page): Promise<string> {
