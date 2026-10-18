@@ -26,7 +26,7 @@ async function fetchChannel(channelName: DiscordChannelName) {
 
 export async function sendBirthdayReport(birthdays: string) {
   console.log("Running birthday report...");
-  const channel = await fetchChannel("test-channel");
+  const channel = await fetchChannel("general-updates");
 
   // Check if the channel exists AND is a text-based channel
   if (!channel) {
