@@ -185,6 +185,18 @@ export async function getEnrolledStudents(
   return enrolledStudents;
 }
 
+interface ProgressCheck {
+  ProgressCheckId: number;
+  StudentId: number;
+  StudentName: string | null;
+  IsGroup: boolean;
+  DateTaken: string;
+  DateEntered: string;
+  StaticPercent: number;
+  DateTakenString: string;
+  DateEnteredString: string;
+}
+
 export async function getAssessmentInfo(
   page: Page,
   students: [string, string][],
@@ -255,11 +267,11 @@ export async function getAssessmentInfo(
       await pressKeyNTimes(page, "Tab", 7);
       await page.keyboard.press("Enter");
 
-      const isActiveLearningPlanFound = await page.$$eval(
+      const latestActivePlanRowIndex = await page.$$eval(
         "#gridLearningPlan tr.k-master-row",
         (rows) => {
           const plans = rows
-            .map((row) => {
+            .map((row, rowIndex) => {
               const createdDateText = row.cells[1]?.innerText.trim() || "";
               const createdDate = new Date(createdDateText);
 
@@ -268,87 +280,97 @@ export async function getAssessmentInfo(
               ) as HTMLInputElement | null;
 
               return {
-                row,
-                name: row.cells[0]?.innerText.trim() || "",
-                createdDate: createdDateText,
+                rowIndex,
                 createdDateValue: createdDate.getTime(),
                 active: activeCheckbox?.checked ?? false,
+                hasViewButton: !!row.querySelector("a.k-grid-View"),
               };
             })
-            .filter((plan) => plan.active && !isNaN(plan.createdDateValue))
+            .filter(
+              (plan) =>
+                plan.active &&
+                !isNaN(plan.createdDateValue) &&
+                plan.hasViewButton,
+            )
             .sort((a, b) => b.createdDateValue - a.createdDateValue);
 
-          const latest = plans[0];
-
-          if (!latest) {
-            return false;
-          }
-
-          const viewButton = latest.row.querySelector(
-            "a.k-grid-View",
-          ) as HTMLElement | null;
-
-          if (!viewButton) {
-            return false;
-          }
-
-          viewButton.click();
-          return true;
+          return plans[0]?.rowIndex ?? -1;
         },
       );
 
-      if (isActiveLearningPlanFound) {
-        // Wait for the Progress Check grid itself to appear
-        await page.waitForSelector("#gridProgressChecks", {
-          timeout: 30000,
-        });
+      if (latestActivePlanRowIndex !== -1) {
+        const rows = await page.$$("#gridLearningPlan tr.k-master-row");
 
-        // Then wait for the Progress Check rows to populate
-        await page.waitForSelector("#gridProgressChecks tr.k-master-row", {
-          timeout: 10000,
-        });
+        const viewButton = rows[latestActivePlanRowIndex]
+          ? await rows[latestActivePlanRowIndex].$("a.k-grid-View")
+          : null;
 
-        const mostRecentProgressCheck = await page.$$eval(
-          "#gridProgressChecks tr.k-master-row",
-          (rows) => {
+        if (!viewButton) {
+          console.log(`${name} - Could not find the "View" button.`);
+          continue;
+        }
+
+        // Start listening BEFORE clicking to avoid missing the response.
+        const progressCheckResponsePromise = page.waitForResponse(
+          (response) => {
+            const url = new URL(response.url());
+
             return (
-              rows
-                .map((row) => {
-                  const dateText = row.cells[1]?.innerText.trim() || "";
-                  const date = new Date(dateText);
-
-                  return {
-                    assessment: row.cells[0]?.innerText.trim() || "",
-                    date: dateText,
-                    dateValue: date.getTime(),
-                    score: row.cells[3]?.innerText.trim() || "",
-                  };
-                })
-                .filter((check) => !isNaN(check.dateValue))
-                .sort((a, b) => b.dateValue - a.dateValue)[0] || null
+              url.pathname === "/ProgressCheck/ProgressCheck_Read" &&
+              url.searchParams.has("learningPlanId") &&
+              response.request().method() === "POST" &&
+              response.status() === 200
             );
           },
+          { timeout: 10000 },
         );
 
-        if (mostRecentProgressCheck) {
-          const mostRecentProgressCheckDate =
-            mostRecentProgressCheck?.date || "";
-          console.log(
-            `${name}${name[name.length - 1] === "s" ? "'" : "'s"} Most Recent Assessment: ${mostRecentAssessmentDate}`,
+        await viewButton.click();
+
+        try {
+          const response = await progressCheckResponsePromise;
+
+          const result = (await response.json()) as {
+            Data?: ProgressCheck[];
+            Total?: number;
+            Errors?: unknown;
+          };
+
+          if (result.Errors) {
+            console.error(
+              `${name} - Error retrieving progress checks:`,
+              result.Errors,
+            );
+          } else {
+            const progressCheckCount = result.Data?.length ?? 0;
+
+            if (result.Data && progressCheckCount > 0) {
+              const progressCheckData = result.Data[0];
+              const mostRecentAssessmentDate =
+                progressCheckData?.DateTakenString || "";
+
+              console.log(
+                `${name}${name[name.length - 1] === "s" ? "'" : "'s"} Most Recent Progress Check: ${mostRecentAssessmentDate}`,
+              );
+
+              await writeSpreadsheetData(
+                "Instruction Scheduler",
+                `Radius Students - HELPER!D${rowNum}`,
+                [[mostRecentAssessmentDate]],
+                false,
+              );
+            } else {
+              console.log(`${name} - No progress checks found.`);
+            }
+          }
+        } catch (error) {
+          console.error(
+            `${name} - Progress checks failed to load or timed out.`,
+            error,
           );
-          await writeSpreadsheetData(
-            "Instruction Scheduler",
-            `Radius Students - HELPER!D${rowNum}`,
-            [[mostRecentProgressCheckDate]],
-            false,
-          );
-          console.log(
-            `${name}${name[name.length - 1] === "s" ? "'" : "'s"} Most Recent Progress Check:`,
-            mostRecentProgressCheck.date,
-          );
-        } else {
-          console.log(`${name} - No progress checks found.`);
         }
+      } else {
+        console.log(`${name} - No active learning plan found.`);
       }
     } catch (error) {
       console.error(`Failed to get assessment data for ${name}`);
