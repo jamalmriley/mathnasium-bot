@@ -75,7 +75,7 @@ export async function sendPaymentAttemptsReport(
   successfulPaymentAttemptsList: string,
 ) {
   console.log("Running payment attempts report...");
-  const channel = await fetchChannel("test-channel");
+  const channel = await fetchChannel("admin-team");
 
   // Check if the channel exists AND is a text-based channel
   if (!channel) {
