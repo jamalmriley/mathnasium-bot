@@ -47,6 +47,29 @@ export async function sendBirthdayReport(birthdays: string) {
   );
 }
 
+export async function sendCardExpirationReport(cardsExpiring: string) {
+  console.log("Running card expiration report...");
+  const channel = await fetchChannel("test-channel");
+
+  // Check if the channel exists AND is a text-based channel
+  if (!channel) {
+    console.error("Channel not found.");
+    return;
+  }
+  if (!channel.isTextBased() || !("send" in channel)) {
+    console.error("Channel cannot send messages.");
+    return;
+  }
+
+  const today = new Date();
+  const timezone = "America/Chicago";
+
+  await channel.send(
+    `# 💳 Card Expiration Report - ${formatInTimeZone(today, timezone, "eee, MMM d")}\n-# Below is an auto-generated card expiration report for the week of ${formatInTimeZone(today, timezone, "MM/dd/yyyy")}. [Click here](https://radius.mathnasium.com/BillingExceptionsReport) to navigate to the Radius Billing Exceptions Report. For any questions or concerns, please reach out to the admin team.\n\n` +
+      cardsExpiring,
+  );
+}
+
 export async function sendEODStudentReport(checkedInStudents: string) {
   console.log("Running daily report...");
   const channel = await fetchChannel("lead-team");

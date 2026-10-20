@@ -11,6 +11,7 @@ import {
   discordClient,
   sendAssessmentReport,
   sendBirthdayReport,
+  sendCardExpirationReport,
   sendEODStudentReport,
   sendReconciliationReport,
 } from "./services/discord.js";
@@ -57,8 +58,10 @@ discordClient.once("clientReady", async () => {
         console.log("Skipping automation due to center closure.");
         return;
       }
-      const { birthdays } = await handleWeeklyRadiusOperations();
+      const { birthdays, cardsExpiringList } =
+        await handleWeeklyRadiusOperations();
       await sendBirthdayReport(birthdays);
+      await sendCardExpirationReport(cardsExpiringList);
     },
     { timezone: "America/Chicago" },
   );

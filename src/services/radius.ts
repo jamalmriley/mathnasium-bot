@@ -1,10 +1,10 @@
+import { format } from "date-fns-tz";
 import { config } from "dotenv";
 import { dirname, join } from "path";
 import type { Page } from "puppeteer";
 import { fileURLToPath } from "url";
 import { writeSpreadsheetData } from "./googleSheets.js";
 import { launchPuppeteer, pressKeyNTimes } from "./puppeteer.js";
-import { format } from "date-fns-tz";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -76,114 +76,13 @@ export async function handleWeeklyRadiusOperations() {
   const { browser, page } = await launchPuppeteer();
   await logIntoRadius(page);
   const birthdays = await getStudentBirthdays(page);
+  const cardsExpiringList = await getExpiringCards(page);
 
   await browser.close();
-  return { birthdays };
+  return { birthdays, cardsExpiringList };
 }
 
 // —————————————————————————————————————————————————— //
-
-export async function getCheckedInStudents(page: Page): Promise<string> {
-  await console.log("Searching checked-in students...");
-  await page.goto("https://radius.mathnasium.com/Attendance/Roster");
-  await page.waitForSelector("tr.k-master-row");
-  await page.click("#btnsearch");
-
-  const checkedInStudents = await page
-    .$$eval("tr.k-master-row", (rows) => {
-      return rows.map((row) => {
-        const cells = Array.from(row.cells);
-        return cells.map((cell) => cell.innerText);
-      });
-    })
-    .then(
-      (students) =>
-        students
-          .filter((row) => row[4] === "true") // Filter for checked-in students
-          .map((row, i) => `${i + 1}. ${[row[7], row[8]].join(" ")}`.trim()), // Display only first and last name
-    );
-
-  const studentList =
-    checkedInStudents.length > 0
-      ? `**The following students are not checked out in Radius:**\n` +
-        checkedInStudents.join("\n")
-      : "All students have been checked out in Radius!";
-
-  // await console.log(studentList);
-  return studentList;
-}
-
-export async function getEnrolledStudents(
-  page: Page,
-): Promise<[string, string][]> {
-  await console.log("Searching enrolled students...");
-  await page.goto("https://radius.mathnasium.com/Student");
-
-  await pressKeyNTimes(page, "Tab", 2);
-  await page.keyboard.type("Enrolled", { delay: 100 });
-  await page.keyboard.press("Enter");
-  await page.waitForSelector("tr.k-master-row");
-
-  const clicksPerRow = 3;
-  const studentCountText = await page.$$eval(
-    "span.k-pager-info.k-label",
-    (spans) => spans.at(-1)?.textContent?.trim() ?? "",
-  );
-  const studentCount = parseInt(studentCountText.split(" of ")[1] ?? "100"); // "1 - 84 of 84" -> 84
-
-  if (studentCount > 100) {
-    await pressKeyNTimes(
-      page,
-      "Tab",
-      Math.min(studentCount, 100) * clicksPerRow + 19,
-    );
-
-    await page.keyboard.press("Tab");
-    await page.keyboard.press("Space");
-    await pressKeyNTimes(page, "ArrowDown", 3);
-    await page.keyboard.press("Enter");
-    await page.waitForFunction(
-      () => document.querySelectorAll("tr.k-master-row").length > 100,
-    );
-  }
-
-  const enrolledStudents = await page
-    .$$eval("tr.k-master-row", (rows) => {
-      return rows.map((row) => {
-        const cells = Array.from(row.cells);
-
-        return cells.map((cell) => {
-          const link = cell.querySelector("a");
-
-          return {
-            text: cell.innerText.trim(),
-            href: link?.href || "",
-          };
-        });
-      });
-    })
-    .then((students) =>
-      students
-        .map((row): [string, string] => {
-          const firstName = row[0]?.text || "";
-          const lastName = row[1]?.text || "";
-
-          // Use the href from whichever cell contains it
-          const href = row[0]?.href || row[1]?.href || "";
-
-          const name = `${firstName} ${lastName}`.trim();
-
-          return [name, href];
-        })
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .filter(([name]) => name !== ""),
-    );
-
-  console.log(
-    `${enrolledStudents.length} ${enrolledStudents.length === 1 ? "student" : "students"} found.`,
-  );
-  return enrolledStudents;
-}
 
 interface ProgressCheck {
   ProgressCheckId: number;
@@ -377,6 +276,150 @@ export async function getAssessmentInfo(
       continue; // Continue to the next student
     }
   }
+}
+
+export async function getCheckedInStudents(page: Page): Promise<string> {
+  await console.log("Searching checked-in students...");
+  await page.goto("https://radius.mathnasium.com/Attendance/Roster");
+  await page.waitForSelector("tr.k-master-row");
+  await page.click("#btnsearch");
+
+  const checkedInStudents = await page
+    .$$eval("tr.k-master-row", (rows) => {
+      return rows.map((row) => {
+        const cells = Array.from(row.cells);
+        return cells.map((cell) => cell.innerText);
+      });
+    })
+    .then(
+      (students) =>
+        students
+          .filter((row) => row[4] === "true") // Filter for checked-in students
+          .map((row, i) => `${i + 1}. ${[row[7], row[8]].join(" ")}`.trim()), // Display only first and last name
+    );
+
+  const studentList =
+    checkedInStudents.length > 0
+      ? `**The following students are not checked out in Radius:**\n` +
+        checkedInStudents.join("\n")
+      : "All students have been checked out in Radius!";
+
+  // await console.log(studentList);
+  return studentList;
+}
+
+export async function getEnrolledStudents(
+  page: Page,
+): Promise<[string, string][]> {
+  await console.log("Searching enrolled students...");
+  await page.goto("https://radius.mathnasium.com/Student");
+
+  await pressKeyNTimes(page, "Tab", 2);
+  await page.keyboard.type("Enrolled", { delay: 100 });
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("tr.k-master-row");
+
+  const clicksPerRow = 3;
+  const studentCountText = await page.$$eval(
+    "span.k-pager-info.k-label",
+    (spans) => spans.at(-1)?.textContent?.trim() ?? "",
+  );
+  const studentCount = parseInt(studentCountText.split(" of ")[1] ?? "100"); // "1 - 84 of 84" -> 84
+
+  if (studentCount > 100) {
+    await pressKeyNTimes(
+      page,
+      "Tab",
+      Math.min(studentCount, 100) * clicksPerRow + 19,
+    );
+
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Space");
+    await pressKeyNTimes(page, "ArrowDown", 3);
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(
+      () => document.querySelectorAll("tr.k-master-row").length > 100,
+    );
+  }
+
+  const enrolledStudents = await page
+    .$$eval("tr.k-master-row", (rows) => {
+      return rows.map((row) => {
+        const cells = Array.from(row.cells);
+
+        return cells.map((cell) => {
+          const link = cell.querySelector("a");
+
+          return {
+            text: cell.innerText.trim(),
+            href: link?.href || "",
+          };
+        });
+      });
+    })
+    .then((students) =>
+      students
+        .map((row): [string, string] => {
+          const firstName = row[0]?.text || "";
+          const lastName = row[1]?.text || "";
+
+          // Use the href from whichever cell contains it
+          const href = row[0]?.href || row[1]?.href || "";
+
+          const name = `${firstName} ${lastName}`.trim();
+
+          return [name, href];
+        })
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .filter(([name]) => name !== ""),
+    );
+
+  console.log(
+    `${enrolledStudents.length} ${enrolledStudents.length === 1 ? "student" : "students"} found.`,
+  );
+  return enrolledStudents;
+}
+
+export async function getExpiringCards(page: Page): Promise<string> {
+  await console.log("Gathering expiring cards...");
+  await page.goto("https://radius.mathnasium.com/BillingExceptionsReport");
+
+  const currYear = new Date().getFullYear();
+
+  await pressKeyNTimes(page, "Tab", 8);
+  await page.keyboard.type("Expiring cards", { delay: 100 });
+  await page.keyboard.press("Enter");
+  await pressKeyNTimes(page, "Tab", 2);
+  await page.keyboard.type(`January ${currYear}`, { delay: 100 });
+  await pressKeyNTimes(page, "Tab", 2);
+  await page.keyboard.type("Active", { delay: 100 });
+  await pressKeyNTimes(page, "Tab", 2);
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("tr.k-master-row");
+
+  const cardsExpiring = await page.$$eval("tr.k-master-row", (rows) => {
+    return rows.map((row, i) => {
+      const cardDetails: string[] = row.cells[2]?.innerText.split("\n") || [];
+      const accountLink = row.cells[3]?.querySelector("a")?.href;
+
+      const [cardholder, last4Digits, expiration] = [
+        cardDetails[0],
+        cardDetails[1] ? cardDetails[1].replace(/\D/g, "") : "0000",
+        cardDetails[2] ? cardDetails[2].replace(/Expiration: /i, "") : "MM/DD",
+      ];
+      return `${i + 1}. [${cardholder}](${accountLink}): Card ending in ${last4Digits} expires on ${expiration}`.trim();
+    });
+  });
+
+  const cardsExpiringList =
+    cardsExpiring.length > 0
+      ? `**The following credit/debit cards have upcoming or past expiration dates:**\n` +
+        cardsExpiring.join("\n") +
+        `\n\nPlease contact these guardians ASAP to capture new payment information.`
+      : "There are no credit/debit cards with upcoming or past expiration dates.";
+
+  console.log(cardsExpiringList);
+  return cardsExpiringList;
 }
 
 export async function getPayments(page: Page) {
