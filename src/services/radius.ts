@@ -3,6 +3,7 @@ import { config } from "dotenv";
 import { dirname, join } from "path";
 import type { Page } from "puppeteer";
 import { fileURLToPath } from "url";
+import { dollarFormatter } from "../utils.js";
 import { writeSpreadsheetData } from "./googleSheets.js";
 import { launchPuppeteer, pressKeyNTimes } from "./puppeteer.js";
 
@@ -69,7 +70,9 @@ export async function handleDelayedRadiusOperations() {
   await logIntoRadius(page);
   const enrolledStudents = await getEnrolledStudents(page);
   await getAssessmentInfo(page, enrolledStudents);
+  const successfulPaymentAttemptsList = await retryFailedPayments(page);
   await browser.close();
+  return { successfulPaymentAttemptsList };
 }
 
 export async function handleWeeklyRadiusOperations() {
@@ -95,6 +98,8 @@ interface ProgressCheck {
   DateTakenString: string;
   DateEnteredString: string;
 }
+
+const LATE_FEE = 35;
 
 export async function getAssessmentInfo(
   page: Page,
@@ -563,4 +568,135 @@ export async function getStudentBirthdays(page: Page): Promise<string> {
 
   console.log(studentList);
   return studentList;
+}
+
+export async function retryFailedPayments(page: Page): Promise<string> {
+  await console.log("Retrying failed card payments...");
+
+  const paymentAttempts: string[] = [];
+
+  await page.goto("https://radius.mathnasium.com/BillingExceptionsReport");
+  await pressKeyNTimes(page, "Tab", 8);
+  await page.keyboard.type("Accounts with past due invoices", { delay: 100 });
+  await page.keyboard.press("Enter");
+  await pressKeyNTimes(page, "Tab", 4);
+  await page.keyboard.type("Active", { delay: 100 });
+  await pressKeyNTimes(page, "Tab", 2);
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("tr.k-master-row");
+
+  // Get all failed payment methods this month
+  const failedPayments = await page.$$eval("tr.k-master-row", (rows) => {
+    return rows.map((row, i) => {
+      const paymentDetails: string[] =
+        row.cells[2]?.innerText.split("\n") || [];
+      const accountName = row.cells[3]?.innerText;
+      const accountLink = row.cells[3]?.querySelector("a")?.href;
+      const invoicesLink = accountLink?.replace(
+        /Details\//,
+        "ManageInvoices?accountId=",
+      );
+      const paymentMethodLink = accountLink?.replace(
+        /Details/,
+        "PaymentMethods",
+      );
+
+      const [invoice, date, amount, status] = [
+        paymentDetails[0]
+          ? paymentDetails[0].replace(/Invoice: /i, "")
+          : "########",
+        paymentDetails[1] ? paymentDetails[1].replace(/Date: /i, "") : "M/D/YY",
+        paymentDetails[2]
+          ? parseInt(paymentDetails[2].replace(/\D/g, "")) / 100
+          : 0,
+        paymentDetails[3] ? paymentDetails[3].replace(/Status: /i, "") : "N/A",
+      ];
+      return {
+        invoice,
+        date,
+        amount,
+        status,
+        accountName,
+        accountLink,
+        invoicesLink,
+        paymentMethodLink,
+      };
+    });
+  });
+
+  // Go through each failed payment
+  for (let i = 0; i < failedPayments.length; i++) {
+    const payment = failedPayments[i];
+    if (!payment) continue;
+
+    const { accountName, amount, invoicesLink, paymentMethodLink } = payment;
+    if (!paymentMethodLink || !invoicesLink) continue;
+
+    await page.goto(paymentMethodLink);
+    await page.waitForSelector("tr.k-master-row");
+
+    // Determine if the active payment method is a card.
+    const activePaymentMethodRow = await page.$(
+      '#gridCPM tr.k-master-row:has(img[src*="Check_mark.png"])',
+    );
+
+    if (activePaymentMethodRow) {
+      // Get the payment method.
+      const paymentMethod = await activePaymentMethodRow.evaluate(
+        (row) => row.cells[2]?.innerText.trim() || "",
+      );
+
+      // If it is a card, do something. Otherwise, continue.
+      if (
+        paymentMethod.toLowerCase().includes("credit") ||
+        paymentMethod.toLowerCase().includes("debit")
+      ) {
+        // Run a one-time payment
+        console.log(
+          `${accountName}: Retrying payment of ${dollarFormatter.format(amount + LATE_FEE)} (${dollarFormatter.format(amount)} + ${dollarFormatter.format(LATE_FEE)} late fee) with card ending in ${paymentMethod.replace(/\D/g, "")}`,
+        );
+
+        await page.goto(invoicesLink);
+        await pressKeyNTimes(page, "Tab", 9);
+        await page.keyboard.press("Enter");
+        await page.waitForSelector("#miscPmntRadio", {
+          timeout: 30000,
+        });
+        await page.click("#miscPmntRadio");
+        await pressKeyNTimes(page, "Tab", 2);
+        await page.keyboard.press("Delete");
+        await page.keyboard.type(String(amount), { delay: 100 });
+        await page.keyboard.press("Tab");
+        await page.keyboard.type(
+          `Past due balance with ${dollarFormatter.format(LATE_FEE)} late fee`,
+          { delay: 100 },
+        );
+        // await page.keyboard.press("Tab");
+        // await page.keyboard.press("Enter");
+
+        const successMessage =
+          `${i + 1}. ${accountName}` +
+          `\n  * ${dollarFormatter.format(amount + LATE_FEE)} (${dollarFormatter.format(amount)} + ${dollarFormatter.format(LATE_FEE)} late fee)` +
+          `\n  * Card ending in ${paymentMethod.replace(/\D/g, "")}`;
+        // console.log(successMessage);
+        paymentAttempts.push(successMessage);
+      } else {
+        console.log(
+          `${accountName}: Active payment method — ${paymentMethod} — is not a card. Continuing...`,
+        );
+      }
+    } else {
+      console.log("No active payment method found.");
+    }
+  }
+
+  const successfulPaymentAttemptsList =
+    paymentAttempts.length > 0
+      ? `**The following failed payments have been re-attempted:**\n` +
+        paymentAttempts.join("\n") +
+        `\n\nAccount invoices and the Payment Reconciliation dashboard can be used to check the status of the payment attempt.`
+      : "There are no failed payments to re-attempt.";
+
+  console.log(successfulPaymentAttemptsList);
+  return successfulPaymentAttemptsList;
 }

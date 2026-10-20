@@ -13,13 +13,17 @@ import {
   sendBirthdayReport,
   sendCardExpirationReport,
   sendEODStudentReport,
+  sendPaymentAttemptsReport,
   sendReconciliationReport,
 } from "./services/discord.js";
 import { writeSpreadsheetData } from "./services/googleSheets.js";
+import { launchPuppeteer } from "./services/puppeteer.js";
 import {
   handleDelayedRadiusOperations,
   handleInstantRadiusOperations,
   handleWeeklyRadiusOperations,
+  logIntoRadius,
+  retryFailedPayments,
 } from "./services/radius.js";
 import { isHolidayOrClosure } from "./utils.js";
 
@@ -44,13 +48,15 @@ discordClient.once("clientReady", async () => {
         console.log("Skipping automation due to center closure.");
         return;
       }
-      await handleDelayedRadiusOperations();
+      const { successfulPaymentAttemptsList } =
+        await handleDelayedRadiusOperations();
+      await sendPaymentAttemptsReport(successfulPaymentAttemptsList);
     },
     { timezone: "America/Chicago" },
   );
 
   // Sun at 9:00 AM
-  // Weekly Operations - Get student birthday info
+  // Weekly Operations - Get student birthday info and expiring card info.
   cron.schedule(
     "0 9 * * 0",
     async () => {
@@ -125,7 +131,7 @@ discordClient.once("clientReady", async () => {
   );
 
   // Mon–Thu at 7:45 PM
-  // EOD Operations - Run daily report
+  // EOD Operations - Run BOD report.
   cron.schedule(
     "45 19 * * 1-4",
     async () => {
@@ -140,7 +146,7 @@ discordClient.once("clientReady", async () => {
   );
 
   // Sun at 5:15 PM
-  // EOD Operations - Run daily report
+  // EOD Operations - Run EOD report.
   cron.schedule(
     "15 17 * * 0",
     async () => {

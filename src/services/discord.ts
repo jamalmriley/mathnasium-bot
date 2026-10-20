@@ -1,5 +1,6 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { Client, GatewayIntentBits } from "discord.js";
+import { dollarFormatter } from "../utils.js";
 import { getSpreadsheetData, getStudentList } from "./googleSheets.js";
 
 const discordChannels = new Map([
@@ -49,7 +50,7 @@ export async function sendBirthdayReport(birthdays: string) {
 
 export async function sendCardExpirationReport(cardsExpiring: string) {
   console.log("Running card expiration report...");
-  const channel = await fetchChannel("test-channel");
+  const channel = await fetchChannel("admin-team");
 
   // Check if the channel exists AND is a text-based channel
   if (!channel) {
@@ -67,6 +68,31 @@ export async function sendCardExpirationReport(cardsExpiring: string) {
   await channel.send(
     `# 💳 Card Expiration Report - ${formatInTimeZone(today, timezone, "eee, MMM d")}\n-# Below is an auto-generated card expiration report for the week of ${formatInTimeZone(today, timezone, "MM/dd/yyyy")}. [Click here](https://radius.mathnasium.com/BillingExceptionsReport) to navigate to the Radius Billing Exceptions Report. For any questions or concerns, please reach out to the admin team.\n\n` +
       cardsExpiring,
+  );
+}
+
+export async function sendPaymentAttemptsReport(
+  successfulPaymentAttemptsList: string,
+) {
+  console.log("Running payment attempts report...");
+  const channel = await fetchChannel("test-channel");
+
+  // Check if the channel exists AND is a text-based channel
+  if (!channel) {
+    console.error("Channel not found.");
+    return;
+  }
+  if (!channel.isTextBased() || !("send" in channel)) {
+    console.error("Channel cannot send messages.");
+    return;
+  }
+
+  const today = new Date();
+  const timezone = "America/Chicago";
+
+  await channel.send(
+    `# 💳 Payment Attempts Report - ${formatInTimeZone(today, timezone, "eee, MMM d")}\n-# Below is an auto-generated card expiration report for the week of ${formatInTimeZone(today, timezone, "MM/dd/yyyy")}. [Click here](https://radius.mathnasium.com/BillingExceptionsReport) to navigate to the Radius Billing Exceptions Report. For any questions or concerns, please reach out to the admin team.\n\n` +
+      successfulPaymentAttemptsList,
   );
 }
 
@@ -129,14 +155,6 @@ export async function sendReconciliationReport(
 
   const today = new Date();
   const timezone = "America/Chicago";
-
-  const dollarFormatter = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-    currencySign: "accounting",
-  });
 
   function formatPayments(): string[] {
     const months = new Map([

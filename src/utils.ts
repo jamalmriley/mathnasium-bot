@@ -25,3 +25,9 @@ export function isHolidayOrClosure(): boolean {
 
   return HOLIDAYS_AND_CLOSURES.includes(formattedDate);
 }
+
+export const dollarFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  trailingZeroDisplay: "stripIfInteger",
+});
