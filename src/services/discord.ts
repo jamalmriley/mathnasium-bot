@@ -1,6 +1,6 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { Client, GatewayIntentBits } from "discord.js";
-import { dollarFormatter } from "../utils.js";
+import { dollarFormatter, formatMessage } from "../utils.js";
 import { getSpreadsheetData, getStudentList } from "./googleSheets.js";
 
 const discordChannels = new Map([
@@ -98,7 +98,7 @@ export async function sendPaymentAttemptsReport(
 
 export async function sendEODStudentReport(checkedInStudents: string) {
   console.log("Running daily report...");
-  const channel = await fetchChannel("lead-team");
+  const channel = await fetchChannel("automated-reminders");
 
   // Check if the channel exists AND is a text-based channel
   if (!channel) {
@@ -133,7 +133,7 @@ export async function sendReconciliationReport(
   totalExpected: number,
 ) {
   const adminTeamChannel = await fetchChannel("admin-team");
-  const leadTeamChannel = await fetchChannel("lead-team");
+  const leadTeamChannel = await fetchChannel("automated-reminders");
 
   // Check if the channels exists AND are text-based channels
   if (!adminTeamChannel) {
@@ -369,47 +369,7 @@ export async function sendAssessmentReport() {
 
   if (reassessingStudents.length === 0) return;
 
-  function formatMessage(students: string[]) {
-    const messageBuckets: string[] = [];
-    let currentBucket = "";
-    const delimiter = "\n";
-    const maxCharLimit = 1700;
-
-    for (const student of students) {
-      // If a single month is somehow huge on its own, push it to its own bucket
-      if (student.length >= maxCharLimit) {
-        if (currentBucket) {
-          messageBuckets.push(currentBucket);
-          currentBucket = "";
-        }
-        messageBuckets.push(student);
-        continue;
-      }
-
-      // Determine what the bucket would look like if we add this month
-      const prospectiveText = currentBucket
-        ? currentBucket + delimiter + student
-        : student;
-
-      if (prospectiveText.length > maxCharLimit) {
-        // It exceeds the limit, so save the old bucket and start a new one with this month
-        messageBuckets.push(currentBucket);
-        currentBucket = student;
-      } else {
-        // It fits, so keep building the current bucket
-        currentBucket = prospectiveText;
-      }
-    }
-
-    // Push the final leftover bucket if it has data
-    if (currentBucket) {
-      messageBuckets.push(currentBucket);
-    }
-
-    return messageBuckets; // Returns an array of grouped data.
-  }
-
-  const leadTeamChannel = await fetchChannel("lead-team");
+  const leadTeamChannel = await fetchChannel("automated-reminders");
 
   // Check if the channels exists AND are text-based channels
   if (!leadTeamChannel) {
@@ -435,6 +395,48 @@ export async function sendAssessmentReport() {
   }
 
   console.log(reassessingStudents);
+}
+
+export async function sendAttendanceReport(students: string[]) {
+  const leadTeamChannel = await fetchChannel("automated-reminders");
+
+  // Check if the channels exists AND are text-based channels
+  if (!leadTeamChannel) {
+    console.error("Lead team channel not found.");
+    return;
+  }
+  if (!leadTeamChannel.isTextBased() || !("send" in leadTeamChannel)) {
+    console.error("Lead team channel cannot send messages.");
+    return;
+  }
+
+  let message: string;
+
+  if (students.length === 0) {
+    message =
+      "There are no students with attendance issues, so no report is generated for today!";
+    await leadTeamChannel.send(message);
+  }
+
+  const today = new Date();
+  const timezone = "America/Chicago";
+
+  const formattedInfo = formatMessage(students);
+
+  for (let i = 0; i < formattedInfo.length; i++) {
+    const header = `# 📋 Attendance Report - ${formatInTimeZone(today, timezone, "eee, MMM d")} | ${students.length} ${students.length === 1 ? "student" : "students"}\n-# Below is an auto-generated attendance report for today (${formatInTimeZone(today, timezone, "MM/dd/yyyy")}).[Click here](https://radius.mathnasium.com/StudentAttendanceMonthlyReport) to navigate to the Student Attendance Report in Radius.\n\n`;
+    const footer = `\n\nPlease note that this list may include newly enrolled students who haven't have the chance to attend yet, as well as students who have recently disenrolled. In either case, please disregard those students.`;
+    message = (
+      i === 0
+        ? header + formattedInfo[i]
+        : i === formattedInfo.length - 1
+          ? formattedInfo[i] + footer
+          : formattedInfo[i]
+    ) as string;
+    await leadTeamChannel.send(message);
+  }
+
+  console.log(students);
 }
 
 export async function sendErrorNotification(message: string) {

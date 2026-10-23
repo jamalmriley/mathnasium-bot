@@ -31,3 +31,43 @@ export const dollarFormatter = new Intl.NumberFormat("en-US", {
   currency: "USD",
   trailingZeroDisplay: "stripIfInteger",
 });
+
+export function formatMessage(students: string[]) {
+  const messageBuckets: string[] = [];
+  let currentBucket = "";
+  const delimiter = "\n";
+  const maxCharLimit = 1700;
+
+  for (const student of students) {
+    // If a single month is somehow huge on its own, push it to its own bucket
+    if (student.length >= maxCharLimit) {
+      if (currentBucket) {
+        messageBuckets.push(currentBucket);
+        currentBucket = "";
+      }
+      messageBuckets.push(student);
+      continue;
+    }
+
+    // Determine what the bucket would look like if we add this month
+    const prospectiveText = currentBucket
+      ? currentBucket + delimiter + student
+      : student;
+
+    if (prospectiveText.length > maxCharLimit) {
+      // It exceeds the limit, so save the old bucket and start a new one with this month
+      messageBuckets.push(currentBucket);
+      currentBucket = student;
+    } else {
+      // It fits, so keep building the current bucket
+      currentBucket = prospectiveText;
+    }
+  }
+
+  // Push the final leftover bucket if it has data
+  if (currentBucket) {
+    messageBuckets.push(currentBucket);
+  }
+
+  return messageBuckets; // Returns an array of grouped data.
+}

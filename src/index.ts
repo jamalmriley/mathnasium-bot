@@ -10,6 +10,7 @@ import {
 import {
   discordClient,
   sendAssessmentReport,
+  sendAttendanceReport,
   sendBirthdayReport,
   sendCardExpirationReport,
   sendEODStudentReport,
@@ -17,13 +18,10 @@ import {
   sendReconciliationReport,
 } from "./services/discord.js";
 import { writeSpreadsheetData } from "./services/googleSheets.js";
-import { launchPuppeteer } from "./services/puppeteer.js";
 import {
   handleDelayedRadiusOperations,
   handleInstantRadiusOperations,
   handleWeeklyRadiusOperations,
-  logIntoRadius,
-  retryFailedPayments,
 } from "./services/radius.js";
 import { isHolidayOrClosure } from "./utils.js";
 
@@ -56,7 +54,7 @@ discordClient.once("clientReady", async () => {
   );
 
   // Sun at 9:00 AM
-  // Weekly Operations - Get student birthday info and expiring card info.
+  // Weekly Operations - Get student birthday info, expiring card info, and attendance data.
   cron.schedule(
     "0 9 * * 0",
     async () => {
@@ -64,10 +62,11 @@ discordClient.once("clientReady", async () => {
         console.log("Skipping automation due to center closure.");
         return;
       }
-      const { birthdays, cardsExpiringList } =
+      const { birthdays, cardsExpiringList, nonAttendingStudents } =
         await handleWeeklyRadiusOperations();
       await sendBirthdayReport(birthdays);
       await sendCardExpirationReport(cardsExpiringList);
+      await sendAttendanceReport(nonAttendingStudents);
     },
     { timezone: "America/Chicago" },
   );

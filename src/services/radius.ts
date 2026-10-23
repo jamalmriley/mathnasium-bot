@@ -80,9 +80,10 @@ export async function handleWeeklyRadiusOperations() {
   await logIntoRadius(page);
   const birthdays = await getStudentBirthdays(page);
   const cardsExpiringList = await getExpiringCards(page);
+  const nonAttendingStudents = await getAttendanceData(page);
 
   await browser.close();
-  return { birthdays, cardsExpiringList };
+  return { birthdays, cardsExpiringList, nonAttendingStudents };
 }
 
 // —————————————————————————————————————————————————— //
@@ -568,6 +569,78 @@ export async function getStudentBirthdays(page: Page): Promise<string> {
 
   console.log(studentList);
   return studentList;
+}
+
+export async function getAttendanceData(page: Page) {
+  await console.log("Gathering attendance information...");
+
+  let timeRange = 14;
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - timeRange);
+  const startDateFormatted = format(startDate, "MM/dd/yyyy");
+
+  await page.goto(
+    "https://radius.mathnasium.com/StudentAttendanceMonthlyReport",
+  );
+  await page.click("#switch_right");
+  await pressKeyNTimes(page, "Tab", 4);
+  await page.keyboard.type(startDateFormatted, { delay: 100 });
+  await pressKeyNTimes(page, "Tab", 8);
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("tr.k-master-row");
+
+  const clicksPerRow = 2;
+  const studentCountText = await page.$$eval(
+    "span.k-pager-info.k-label",
+    (spans) => spans.at(-1)?.textContent?.trim() ?? "",
+  );
+  const studentCount = parseInt(studentCountText.split(" of ")[1] ?? "100"); // "1 - 84 of 84" -> 84
+
+  if (studentCount > 100) {
+    await pressKeyNTimes(
+      page,
+      "Tab",
+      Math.min(studentCount, 100) * clicksPerRow + 9,
+    );
+
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Space");
+    await pressKeyNTimes(page, "ArrowDown", 3);
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(
+      () => document.querySelectorAll("tr.k-master-row").length > 100,
+    );
+  }
+
+  const students = await page
+    .$$eval("tr.k-master-row", (rows) => {
+      return rows.map((row) => {
+        const cells = Array.from(row.cells);
+        return cells.map((cell) => cell.innerText);
+      });
+    })
+    .then(
+      (students) =>
+        students
+          .filter((row) => {
+            const studentExceptions = ["KING HS"];
+            const fullName = [row[1], row[2]].join(" ").trim();
+            const sessionCount = parseInt(row[6] ?? "");
+
+            return sessionCount === 0 && !studentExceptions.includes(fullName);
+          }) // Filter out fake students and students who've attended at least once.
+          .map((row, i) => {
+            const link = `https://radius.mathnasium.com/Student/Details/${row[0]}`;
+            const fullName = [row[1], row[2]].join(" ").trim();
+            return `${i + 1}. [${fullName}](${link})`;
+          }), // Display only first and last name
+    );
+
+  console.log(
+    `${students.length} ${students.length === 1 ? "student" : "students"} have not attended in the last ${timeRange} day${timeRange === 1 ? "" : "s"}.`,
+  );
+  return students;
 }
 
 export async function retryFailedPayments(page: Page): Promise<string> {
